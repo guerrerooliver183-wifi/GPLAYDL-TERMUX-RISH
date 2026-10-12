@@ -95,7 +95,7 @@ COUNT=0
 FAILED=0
 
 # Extract the base APK and every split APK.
-while IFS= read -r LINE || [ -n "$LINE" ]; do
+for LINE in $PATHS; do
     LINE="${LINE%$'\r'}"
 
     case "$LINE" in
@@ -125,7 +125,7 @@ while IFS= read -r LINE || [ -n "$LINE" ]; do
             fi
             ;;
     esac
-done <<< "$PATHS"
+done
 
 printf '\nAPK paths reported: %s\n' "$EXPECTED_COUNT"
 printf 'APK files extracted: %s\n' "$COUNT"
