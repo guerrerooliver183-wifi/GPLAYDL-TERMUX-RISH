@@ -80,7 +80,7 @@ rish -c "mkdir -p '$REMOTE_DIR'" ||
 
 TMP_CREATED=1
 
-# Find installed APK paths
+# Find installed APK paths. Preserve and validate every package: line.
 log "Finding APK files for $PACKAGE_NAME"
 
 PATHS="$(rish -c "pm path '$PACKAGE_NAME'")" ||
@@ -88,11 +88,14 @@ PATHS="$(rish -c "pm path '$PACKAGE_NAME'")" ||
 
 [ -n "$PATHS" ] || fail "No APK files were found."
 
+EXPECTED_COUNT="$(printf '%s\n' "$PATHS" | grep -c '^package:' || true)"
+[ "$EXPECTED_COUNT" -gt 0 ] || fail "Package Manager returned no APK paths."
+
 COUNT=0
 FAILED=0
 
-# Extract base APK and every split APK
-while IFS= read -r LINE; do
+# Extract the base APK and every split APK.
+while IFS= read -r LINE || [ -n "$LINE" ]; do
     LINE="${LINE%$'\r'}"
 
     case "$LINE" in
@@ -101,16 +104,14 @@ while IFS= read -r LINE; do
             NAME="${SRC##*/}"
 
             if [[ ! "$NAME" =~ ^[A-Za-z0-9_.-]+\.apk$ ]]; then
-                printf '[ERROR] Unexpected APK filename.\n' >&2
+                printf '[ERROR] Unexpected APK filename: %s\n' "$NAME" >&2
                 FAILED=$((FAILED + 1))
                 continue
             fi
 
             log "Extracting $NAME"
 
-            if rish -c \
-                "cat '$SRC' > '$REMOTE_DIR/$NAME' &&
-                 test -s '$REMOTE_DIR/$NAME'"; then
+            if rish -c "cat '$SRC' > '$REMOTE_DIR/$NAME' && test -s '$REMOTE_DIR/$NAME'"; then
                 ok "Extracted $NAME"
                 COUNT=$((COUNT + 1))
             else
@@ -118,20 +119,30 @@ while IFS= read -r LINE; do
                 FAILED=$((FAILED + 1))
             fi
             ;;
+        *)
+            if [ -n "$LINE" ]; then
+                printf '[WARNING] Ignoring unexpected Package Manager output: %s\n' "$LINE" >&2
+            fi
+            ;;
     esac
 done <<< "$PATHS"
 
-printf '\nExtracted APK files: %s\n' "$COUNT"
+printf '\nAPK paths reported: %s\n' "$EXPECTED_COUNT"
+printf 'APK files extracted: %s\n' "$COUNT"
 printf 'Extraction errors: %s\n' "$FAILED"
 
-[ "$COUNT" -gt 0 ] ||
-    fail "No APK files were extracted."
+[ "$COUNT" -gt 0 ] || fail "No APK files were extracted."
+[ "$FAILED" -eq 0 ] || fail "Extraction was incomplete. Installation cancelled."
 
-[ "$FAILED" -eq 0 ] ||
-    fail "Extraction was incomplete. Installation cancelled."
+# Independently verify that every reported APK was copied.
+ACTUAL_COUNT="$(rish -c "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.apk' | wc -l" | tr -d '[:space:]')"
+
+[ "$ACTUAL_COUNT" = "$EXPECTED_COUNT" ] ||
+    fail "APK count mismatch: Package Manager reported $EXPECTED_COUNT, but $ACTUAL_COUNT file(s) were extracted. Installation cancelled."
+
+ok "All $ACTUAL_COUNT APK file(s), including splits, are ready."
 
 # Install through Package Manager sessions.
-# This avoids relying on the unavailable pm install-multiple command.
 log "Installing/updating $PACKAGE_NAME"
 
 set +e
@@ -164,17 +175,16 @@ for apk do
     TOTAL_SIZE=\$((TOTAL_SIZE + SIZE))
 done
 
-printf 'Preparing %s APK file(s)...\n' \"\$#\"
+printf 'Preparing %s APK file(s)...\\n' \"\$#\"
 
-SESSION_OUTPUT=\$(cmd package install-create \
-    -r -i \"\$INSTALLER_PACKAGE\" -S \"\$TOTAL_SIZE\") || {
-    printf '%s\n' \"\$SESSION_OUTPUT\" >&2
+SESSION_OUTPUT=\$(cmd package install-create -r -i \"\$INSTALLER_PACKAGE\" -S \"\$TOTAL_SIZE\") || {
+    printf '%s\\n' \"\$SESSION_OUTPUT\" >&2
     exit 1
 }
 
-printf '%s\n' \"\$SESSION_OUTPUT\"
+printf '%s\\n' \"\$SESSION_OUTPUT\"
 
-SESSION_ID=\$(printf '%s\n' \"\$SESSION_OUTPUT\" |
+SESSION_ID=\$(printf '%s\\n' \"\$SESSION_OUTPUT\" |
     sed -n 's/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p' |
     head -n 1)
 
@@ -187,15 +197,14 @@ for apk do
     NAME=\$(basename \"\$apk\")
     SIZE=\$(wc -c < \"\$apk\")
 
-    printf 'Writing %s...\n' \"\$NAME\"
+    printf 'Writing %s...\\n' \"\$NAME\"
 
-    cmd package install-write \
-        -S \"\$SIZE\" \"\$SESSION_ID\" \"\$NAME\" \"\$apk\"
+    cmd package install-write -S \"\$SIZE\" \"\$SESSION_ID\" \"\$NAME\" \"\$apk\"
 done
 
 cmd package install-commit \"\$SESSION_ID\"
 
-# The session was committed successfully.
+# Commit succeeded; do not abandon the completed session.
 SESSION_ID=''
 " 2>&1)"
 INSTALL_STATUS=$?
@@ -225,12 +234,13 @@ printf '%s\n' "$VERIFY_OUTPUT" |
 
 ok "Package is installed: $PACKAGE_NAME"
 
-# Display installer metadata when supported
-INSTALLER_VERIFY="$(
-    rish -c "pm get-installer '$PACKAGE_NAME'" 2>&1
-)" || INSTALLER_VERIFY="Installer metadata unavailable"
-
-printf 'Installer metadata: %s\n' "$INSTALLER_VERIFY"
+# Installer metadata lookup is not supported by every Android pm implementation.
+INSTALLER_VERIFY="$(rish -c "pm get-installer '$PACKAGE_NAME'" 2>&1 || true)"
+if printf '%s\n' "$INSTALLER_VERIFY" | grep -q 'Unknown command'; then
+    echo "Installer metadata lookup is not supported by this device; skipping."
+else
+    printf 'Installer metadata: %s\n' "$INSTALLER_VERIFY"
+fi
 
 ok "Process completed."
 echo "Temporary files will be removed automatically."
