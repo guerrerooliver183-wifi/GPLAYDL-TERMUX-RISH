@@ -111,7 +111,7 @@ while IFS= read -r LINE || [ -n "$LINE" ]; do
 
             log "Extracting $NAME"
 
-            if rish -c "cat '$SRC' > '$REMOTE_DIR/$NAME' && test -s '$REMOTE_DIR/$NAME'"; then
+            if rish -c "cat '$SRC' > '$REMOTE_DIR/$NAME' && test -s '$REMOTE_DIR/$NAME'" </dev/null; then
                 ok "Extracted $NAME"
                 COUNT=$((COUNT + 1))
             else
