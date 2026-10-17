@@ -44,16 +44,19 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
 
 printf '%s\n' "$WHOAMI_OUTPUT"
 
-RISH_USER="$(printf '%s' "$WHOAMI_OUTPUT" | tr -d '\r\n')"
+RISH_USER="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '
+    /^[[:space:]]*(shell|root)[[:space:]]*$/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+        print
+        exit
+    }
+')"
 
-case "$RISH_USER" in
-    shell|root)
-        ok "Shizuku/Rish is working correctly."
-        ;;
-    *)
-        fail "Unexpected Rish identity. Expected 'shell' or 'root'."
-        ;;
-esac
+if [ "$RISH_USER" != "shell" ] && [ "$RISH_USER" != "root" ]; then
+    fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"
+fi
+
+ok "Shizuku/Rish is working correctly (identity: $RISH_USER)."
 
 # Remote temporary directory
 readonly REMOTE_DIR="/data/local/tmp/apk_extract_$$"
