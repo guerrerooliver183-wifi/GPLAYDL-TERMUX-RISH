@@ -132,7 +132,7 @@ printf '%s\n' "$WHOAMI_OUTPUT"
 # Rish may print an authorization notice before the actual identity.
 # Accept only a complete line that is exactly "shell" or "root", ignoring
 # surrounding whitespace; do not match those words inside unrelated messages.
-RISH_IDENTITY="$(printf '%s\\n' "$WHOAMI_OUTPUT" | awk '
+RISH_IDENTITY="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '
     /^[[:space:]]*(shell|root)[[:space:]]*$/ {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "")
         print
@@ -191,7 +191,7 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
 # Rish may print an authorization notice before the actual identity.
 # Accept only a complete line that is exactly "shell" or "root", ignoring
 # surrounding whitespace; do not match those words inside unrelated messages.
-RISH_IDENTITY="$(printf '%s\\n' "$WHOAMI_OUTPUT" | awk '
+RISH_IDENTITY="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '
     /^[[:space:]]*(shell|root)[[:space:]]*$/ {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "")
         print
