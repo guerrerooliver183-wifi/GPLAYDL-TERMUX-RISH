@@ -129,9 +129,20 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
     fail "Rish could not execute commands. Make sure Shizuku is running and Termux is authorized."
 }
 printf '%s\n' "$WHOAMI_OUTPUT"
-if [ "$WHOAMI_OUTPUT" != "shell" ] && [ "$WHOAMI_OUTPUT" != "root" ]; then
-    fail "Rish returned an unexpected identity: '$WHOAMI_OUTPUT' (expected 'shell' or 'root')."
+# Rish may print an authorization notice before the actual identity.
+# Accept only a complete line that is exactly "shell" or "root", ignoring
+# surrounding whitespace; do not match those words inside unrelated messages.
+RISH_IDENTITY="$(printf '%s\\n' "$WHOAMI_OUTPUT" | awk '
+    /^[[:space:]]*(shell|root)[[:space:]]*$/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+        print
+        exit
+    }
+')"
+if [ "$RISH_IDENTITY" != "shell" ] && [ "$RISH_IDENTITY" != "root" ]; then
+    fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"
 fi
+ok "Shizuku/Rish is working correctly (identity: $RISH_IDENTITY)."
 ok "Shizuku/Rish is working correctly."
 
 # Create phase two; it remains available for future runs as a universal installer.
@@ -177,9 +188,20 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
     printf '%s\n' "$WHOAMI_OUTPUT"
     fail "Rish failed. Start Shizuku and authorize Termux."
 }
-if [ "$WHOAMI_OUTPUT" != "shell" ] && [ "$WHOAMI_OUTPUT" != "root" ]; then
-    fail "Rish returned an unexpected identity: '$WHOAMI_OUTPUT' (expected 'shell' or 'root')."
+# Rish may print an authorization notice before the actual identity.
+# Accept only a complete line that is exactly "shell" or "root", ignoring
+# surrounding whitespace; do not match those words inside unrelated messages.
+RISH_IDENTITY="$(printf '%s\\n' "$WHOAMI_OUTPUT" | awk '
+    /^[[:space:]]*(shell|root)[[:space:]]*$/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+        print
+        exit
+    }
+')"
+if [ "$RISH_IDENTITY" != "shell" ] && [ "$RISH_IDENTITY" != "root" ]; then
+    fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"
 fi
+ok "Shizuku/Rish is working correctly (identity: $RISH_IDENTITY)."
 ok "Shizuku/Rish is working correctly."
 
 log "Downloading $PACKAGE_NAME with gplaydl"
