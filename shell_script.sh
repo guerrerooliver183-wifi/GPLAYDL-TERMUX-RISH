@@ -129,7 +129,9 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
     fail "Rish could not execute commands. Make sure Shizuku is running and Termux is authorized."
 }
 printf '%s\n' "$WHOAMI_OUTPUT"
-printf '%s\n' "$WHOAMI_OUTPUT" | grep -qx shell || fail "Rish did not return 'shell'."
+if [ "$WHOAMI_OUTPUT" != "shell" ] && [ "$WHOAMI_OUTPUT" != "root" ]; then
+    fail "Rish returned an unexpected identity: '$WHOAMI_OUTPUT' (expected 'shell' or 'root')."
+fi
 ok "Shizuku/Rish is working correctly."
 
 # Create phase two; it remains available for future runs as a universal installer.
@@ -175,7 +177,9 @@ WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
     printf '%s\n' "$WHOAMI_OUTPUT"
     fail "Rish failed. Start Shizuku and authorize Termux."
 }
-printf '%s\n' "$WHOAMI_OUTPUT" | grep -qx shell || fail "Rish did not return 'shell'."
+if [ "$WHOAMI_OUTPUT" != "shell" ] && [ "$WHOAMI_OUTPUT" != "root" ]; then
+    fail "Rish returned an unexpected identity: '$WHOAMI_OUTPUT' (expected 'shell' or 'root')."
+fi
 ok "Shizuku/Rish is working correctly."
 
 log "Downloading $PACKAGE_NAME with gplaydl"
