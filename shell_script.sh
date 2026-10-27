@@ -18,6 +18,39 @@ fail() { printf '\n[ERROR] %s\n' "$*" >&2; exit 1; }
 log()  { printf '\n[*] %s\n' "$*"; }
 ok()   { printf '[✓] %s\n' "$*"; }
 
+# Select the remote execution backend before doing any setup work.
+SHELL_MODE="rish"
+ADB_SERIAL=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --shell=adb) SHELL_MODE="adb"; shift ;;
+        --shell=rish) SHELL_MODE="rish"; shift ;;
+        --shell)
+            [ "$#" -ge 2 ] || fail "Option --shell requires 'adb' or 'rish'."
+            case "$2" in
+                adb|rish) SHELL_MODE="$2" ;;
+                *) fail "Invalid shell mode: $2. Use adb or rish." ;;
+            esac
+            shift 2
+            ;;
+        -s)
+            [ "$#" -ge 2 ] || fail "Option -s requires an ADB device serial."
+            ADB_SERIAL="$2"
+            shift 2
+            ;;
+        --help|-h)
+            printf 'Usage: %s [--shell=adb|rish] [-s serial]\\n' "$(basename "$0")"
+            exit 0
+            ;;
+        *) fail "Unknown option: $1" ;;
+    esac
+done
+[ "$SHELL_MODE" = "adb" ] || [ -z "$ADB_SERIAL" ] || fail "Option -s can only be used with --shell=adb."
+if [ -n "$ADB_SERIAL" ] && [[ ! "$ADB_SERIAL" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+    fail "Invalid ADB serial. Use the serial shown by 'adb devices'."
+fi
+readonly SHELL_MODE ADB_SERIAL
+
 require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "'$1' was not found."
 }
@@ -65,6 +98,7 @@ require_command termux-setup-storage
 termux-setup-storage
 sleep 1
 
+if [ "$SHELL_MODE" = "rish" ]; then
 # Accept the usual Shizuku export paths.
 SHIZUKU_DIR=""
 for candidate in \
@@ -145,6 +179,40 @@ fi
 ok "Shizuku/Rish is working correctly (identity: $RISH_IDENTITY)."
 ok "Shizuku/Rish is working correctly."
 
+else
+    require_command adb
+    log "Checking ADB shell connection"
+    if [ -n "$ADB_SERIAL" ]; then
+        if ADB_CHECK_OUTPUT="$(adb -s "$ADB_SERIAL" shell id 2>&1)"; then
+            :
+        else
+            ADB_CHECK_STATUS=$?
+            printf '%s\\n' "$ADB_CHECK_OUTPUT" >&2
+            if printf '%s\\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
+                printf "[ERROR] Multiple ADB devices or emulators detected.\\n" >&2
+                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\\n" >&2
+                printf 'Exiting.\\n' >&2
+            fi
+            fail "Could not run a command through ADB shell. Check the device connection and authorization (exit status: $ADB_CHECK_STATUS)."
+        fi
+    else
+        if ADB_CHECK_OUTPUT="$(adb shell id 2>&1)"; then
+            :
+        else
+            ADB_CHECK_STATUS=$?
+            printf '%s\\n' "$ADB_CHECK_OUTPUT" >&2
+            if printf '%s\\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
+                printf "[ERROR] Multiple ADB devices or emulators detected.\\n" >&2
+                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\\n" >&2
+                printf 'Exiting.\\n' >&2
+            fi
+            fail "Could not run a command through ADB shell. Check the device connection and authorization (exit status: $ADB_CHECK_STATUS)."
+        fi
+    fi
+    printf '%s\\n' "$ADB_CHECK_OUTPUT"
+    ok "ADB shell is working. Shizuku checks were skipped."
+fi
+
 # Create phase two; it remains available for future runs as a universal installer.
 log "Creating $SHELL_SCRIPT"
 cat > "$HOME/$SHELL_SCRIPT" <<'GENERATED_SCRIPT'
@@ -159,14 +227,49 @@ set -Eeuo pipefail
 # Temporary PATH: does not modify ~/.bashrc or permanent configuration.
 export PATH="$PREFIX/bin:$PATH"
 
-# --- Argument Validation ---
-if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-    printf 'Usage: %s <package.name>\n' "$(basename "$0")" >&2
-    printf 'Example: %s com.google.android.googlequicksearchbox\n' "$(basename "$0")" >&2
-    exit 1
-fi
+readonly DEFAULT_SHELL_MODE="__DEFAULT_SHELL_MODE__"
+readonly DEFAULT_ADB_SERIAL="__DEFAULT_ADB_SERIAL__"
+SHELL_MODE="$DEFAULT_SHELL_MODE"
+ADB_SERIAL=""
+if [ "$DEFAULT_SHELL_MODE" = "adb" ]; then ADB_SERIAL="$DEFAULT_ADB_SERIAL"; fi
+PACKAGE_NAME=""
 
-readonly PACKAGE_NAME="$1"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --shell=adb) SHELL_MODE="adb"; ADB_SERIAL=""; shift ;;
+        --shell=rish) SHELL_MODE="rish"; ADB_SERIAL=""; shift ;;
+        --shell)
+            [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2; exit 1; }
+            case "$2" in
+                adb) SHELL_MODE="adb"; ADB_SERIAL="" ;;
+                rish) SHELL_MODE="rish"; ADB_SERIAL="" ;;
+                *) printf '[ERROR] Invalid shell mode: %s. Use adb or rish.\\n' "$2" >&2; exit 1 ;;
+            esac
+            shift 2
+            ;;
+        -s)
+            [ "$#" -ge 2 ] || { printf '[ERROR] Option -s requires an ADB device serial.\\n' >&2; exit 1; }
+            ADB_SERIAL="$2"
+            shift 2
+            ;;
+        --help|-h)
+            printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")"
+            exit 0
+            ;;
+        -*) printf '[ERROR] Unknown option: %s\\n' "$1" >&2; exit 1 ;;
+        *)
+            [ -z "$PACKAGE_NAME" ] || { printf '[ERROR] Only one package name may be provided.\\n' >&2; exit 1; }
+            PACKAGE_NAME="$1"
+            shift
+            ;;
+    esac
+done
+[ -n "$PACKAGE_NAME" ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2; exit 1; }
+[ "$SHELL_MODE" = "adb" ] || [ -z "$ADB_SERIAL" ] || { printf '[ERROR] Option -s can only be used with --shell=adb.\\n' >&2; exit 1; }
+if [ -n "$ADB_SERIAL" ] && [[ ! "$ADB_SERIAL" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+    printf '[ERROR] Invalid ADB serial. Use the serial shown by adb devices.\\n' >&2; exit 1
+fi
+readonly PACKAGE_NAME SHELL_MODE ADB_SERIAL
 readonly INSTALLER_PACKAGE="com.android.vending"
 readonly TEMP_DIR="$HOME/TEMP"
 readonly APK_TRANSFER_DIR="$HOME/storage/shared/TEMP_GPLAYDL"
@@ -181,10 +284,40 @@ cleanup() {
 trap cleanup EXIT
 
 command -v gplaydl >/dev/null 2>&1 || fail "gplaydl was not found. Run the setup script first."
-command -v rish >/dev/null 2>&1 || fail "rish was not found. Run the setup script first."
+if [ "$SHELL_MODE" = "adb" ]; then
+    command -v adb >/dev/null 2>&1 || fail "adb was not found. Install Android Platform Tools and ensure adb is on PATH."
+else
+    command -v rish >/dev/null 2>&1 || fail "rish was not found. Run the setup script with --shell=rish first."
+fi
+
+remote_exec() {
+    local output status
+    if [ "$SHELL_MODE" = "adb" ]; then
+        if [ -n "$ADB_SERIAL" ]; then
+            if output="$(adb -s "$ADB_SERIAL" shell "$1" 2>&1)"; then status=0; else status=$?; fi
+        else
+            if output="$(adb shell "$1" 2>&1)"; then status=0; else status=$?; fi
+        fi
+    else
+        if output="$(rish -c "$1" 2>&1)"; then status=0; else status=$?; fi
+    fi
+    [ -z "$output" ] || printf '%s\\n' "$output"
+    if [ "$status" -ne 0 ]; then
+        if printf '%s\\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
+            printf '\\n[ERROR] Multiple ADB devices or emulators detected.\\n' >&2
+            printf "Tip: Run 'adb devices' to list available devices, then rerun with '-s <serial>'.\\n" >&2
+            printf 'Exiting.\\n' >&2
+        fi
+        return "$status"
+    fi
+}
+
+if [ "$SHELL_MODE" = "adb" ]; then
+    remote_exec 'id' || fail "ADB shell check failed. Check device connection and authorization."
+}
 
 log "Checking Shizuku/Rish"
-WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
+WHOAMI_OUTPUT="$(remote_exec 'whoami' 2>&1)" || {
     printf '%s\n' "$WHOAMI_OUTPUT"
     fail "Rish failed. Start Shizuku and authorize Termux."
 }
@@ -226,7 +359,7 @@ ok "Prepared ${#TRANSFERRED_APKS[@]} APK file(s) for installation."
 
 log "Installing APK splits through Shizuku"
 set +e
-INSTALL_OUTPUT="$(rish -c '
+INSTALL_OUTPUT="$(remote_exec '
 set -eu
 SOURCE_DIR="/sdcard/TEMP_GPLAYDL"
 INSTALL_DIR="/data/local/tmp/TEMP_GPLAYDL"
@@ -291,7 +424,7 @@ if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\n' "$INSTALL_OUTPUT" | grep -q 'S
 fi
 
 log "Verifying the installation"
-if ! rish -c "pm path '$PACKAGE_NAME'" >/dev/null 2>&1; then
+if ! remote_exec "pm path '$PACKAGE_NAME'" >/dev/null 2>&1; then
     fail "Installation failed or Android could not find the package."
 fi
 
@@ -299,6 +432,7 @@ ok "Package installed successfully."
 echo '[✓] Temporary files will be removed automatically.'
 GENERATED_SCRIPT
 
+sed -i "s|__DEFAULT_SHELL_MODE__|$SHELL_MODE|g; s|__DEFAULT_ADB_SERIAL__|$ADB_SERIAL|g" "$HOME/$SHELL_SCRIPT" || fail "Could not write the selected shell mode into $SHELL_SCRIPT."
 chmod 700 "$HOME/$SHELL_SCRIPT" || fail "Could not make $SHELL_SCRIPT executable."
 ok "Installation and configuration completed."
 printf '\nRun afterward passing any package name:\n  bash ~/%s <package.name>\n' "$SHELL_SCRIPT"
