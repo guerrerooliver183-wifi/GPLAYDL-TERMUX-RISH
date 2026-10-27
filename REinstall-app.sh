@@ -19,44 +19,65 @@ ok() {
     printf '[✓] %s\n' "$*"
 }
 
-# Validate arguments
-if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-    printf 'Usage: %s <package.name>\n' "$(basename "$0")" >&2
-    exit 1
-fi
+remote_exec() {
+    local command="$1" output status
+    if [ "$SHELL_MODE" = "adb" ]; then
+        if [ -n "$ADB_SERIAL" ]; then
+            if output="$(adb -s "$ADB_SERIAL" shell "$command" 2>&1)"; then status=0; else status=$?; fi
+        else
+            if output="$(adb shell "$command" 2>&1)"; then status=0; else status=$?; fi
+        fi
+        if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -Fq 'adb: more than one device/emulator'; then
+            printf '\n[ERROR] Multiple ADB devices or emulators detected.\nTip: Run "adb devices" and rerun with "--shell=adb -s <serial>".\nExample: bash %s --shell=adb -s 127.0.0.1:5555 com.example.app\nExiting.\n' "$(basename "$0")" >&2
+            return 1
+        fi
+        [ -z "$output" ] || printf '%s\n' "$output"
+        return "$status"
+    fi
+    rish -c "$command"
+}
 
-readonly PACKAGE_NAME="$1"
+SHELL_MODE="rish"
+ADB_SERIAL=""
+PACKAGE_NAME=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --shell=adb) SHELL_MODE="adb" ;;
+        --shell=rish) SHELL_MODE="rish" ;;
+        --shell) [ "$#" -ge 2 ] || fail "Missing value for --shell."; case "$2" in adb|rish) SHELL_MODE="$2" ;; *) fail "Invalid shell mode: $2" ;; esac; shift ;;
+        -s) [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Option -s requires an ADB device serial."; ADB_SERIAL="$2"; shift ;;
+        --help|-h) printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")"; exit 0 ;;
+        -*) fail "Unknown option: $1" ;;
+        *) [ -z "$PACKAGE_NAME" ] || fail "Only one package name may be supplied."; PACKAGE_NAME="$1" ;;
+    esac
+    shift
+done
+[ -n "$PACKAGE_NAME" ] || fail "Usage: $(basename "$0") [--shell=adb|rish] [-s serial] <package.name>"
+[ -z "$ADB_SERIAL" ] || [ "$SHELL_MODE" = "adb" ] || fail "Option -s can only be used with --shell=adb."
+readonly PACKAGE_NAME SHELL_MODE ADB_SERIAL
 
 if [[ ! "$PACKAGE_NAME" =~ ^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$ ]]; then
     fail "Invalid package name."
 fi
 
-command -v rish >/dev/null 2>&1 ||
-    fail "rish was not found. Check your Shizuku setup."
-
-# Check Shizuku/Rish
-log "Checking Shizuku/Rish connection"
-
-WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
-    printf '%s\n' "$WHOAMI_OUTPUT" >&2
-    fail "Rish failed. Start Shizuku and authorize Termux."
-}
-
-printf '%s\n' "$WHOAMI_OUTPUT"
-
-RISH_USER="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '
-    /^[[:space:]]*(shell|root)[[:space:]]*$/ {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-        print
-        exit
-    }
-')"
-
-if [ "$RISH_USER" != "shell" ] && [ "$RISH_USER" != "root" ]; then
-    fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"
+if [ "$SHELL_MODE" = "rish" ]; then
+    command -v rish >/dev/null 2>&1 || fail "rish was not found. Check your Shizuku setup."
+else
+    command -v adb >/dev/null 2>&1 || fail "adb was not found. Install Android platform-tools and ensure adb is in PATH."
 fi
 
-ok "Shizuku/Rish is working correctly (identity: $RISH_USER)."
+if [ "$SHELL_MODE" = "rish" ]; then
+    log "Checking Shizuku/Rish connection"
+    WHOAMI_OUTPUT="$(remote_exec 'whoami' 2>&1)" || { printf '%s\n' "$WHOAMI_OUTPUT" >&2; fail "Rish failed. Start Shizuku and authorize Termux."; }
+    printf '%s\n' "$WHOAMI_OUTPUT"
+    RISH_USER="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '/^[[:space:]]*(shell|root)[[:space:]]*$/ { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }')"
+    if [ "$RISH_USER" != "shell" ] && [ "$RISH_USER" != "root" ]; then fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"; fi
+    ok "Shizuku/Rish is working correctly (identity: $RISH_USER)."
+else
+    log "Checking ADB connection"
+    remote_exec 'whoami' >/dev/null || fail "ADB could not execute a shell command. Check that a device is connected and authorized."
+    ok "ADB shell is working correctly."
+fi
 
 # Remote temporary directory
 readonly REMOTE_DIR="/data/local/tmp/apk_extract_$$"
@@ -65,7 +86,7 @@ TMP_CREATED=0
 cleanup() {
     if [ "$TMP_CREATED" -eq 1 ]; then
         log "Removing temporary APK files"
-        if ! rish -c "rm -rf '$REMOTE_DIR'" >/dev/null 2>&1; then
+        if ! remote_exec "rm -rf '$REMOTE_DIR'" >/dev/null 2>&1; then
             printf '[WARNING] Could not remove %s\n' "$REMOTE_DIR" >&2
         fi
     fi
@@ -78,7 +99,7 @@ trap 'exit 143' TERM
 # Create temporary directory
 log "Creating temporary directory"
 
-rish -c "mkdir -p '$REMOTE_DIR'" ||
+remote_exec "mkdir -p '$REMOTE_DIR'" ||
     fail "Could not create the remote temporary directory."
 
 TMP_CREATED=1
@@ -86,7 +107,7 @@ TMP_CREATED=1
 # Find installed APK paths. Preserve and validate every package: line.
 log "Finding APK files for $PACKAGE_NAME"
 
-PATHS="$(rish -c "pm path '$PACKAGE_NAME'")" ||
+PATHS="$(remote_exec "pm path '$PACKAGE_NAME'")" ||
     fail "Could not query installed APK paths."
 
 [ -n "$PATHS" ] || fail "No APK files were found."
@@ -114,7 +135,7 @@ for LINE in $PATHS; do
 
             log "Extracting $NAME"
 
-            if rish -c "cat '$SRC' > '$REMOTE_DIR/$NAME' && test -s '$REMOTE_DIR/$NAME'" </dev/null; then
+            if remote_exec "cat '$SRC' > '$REMOTE_DIR/$NAME' && test -s '$REMOTE_DIR/$NAME'" </dev/null; then
                 ok "Extracted $NAME"
                 COUNT=$((COUNT + 1))
             else
@@ -138,7 +159,7 @@ printf 'Extraction errors: %s\n' "$FAILED"
 [ "$FAILED" -eq 0 ] || fail "Extraction was incomplete. Installation cancelled."
 
 # Independently verify that every reported APK was copied.
-ACTUAL_COUNT="$(rish -c "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.apk' | wc -l" | tr -d '[:space:]')"
+ACTUAL_COUNT="$(remote_exec "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.apk' | wc -l" | tr -d '[:space:]')"
 
 [ "$ACTUAL_COUNT" = "$EXPECTED_COUNT" ] ||
     fail "APK count mismatch: Package Manager reported $EXPECTED_COUNT, but $ACTUAL_COUNT file(s) were extracted. Installation cancelled."
@@ -149,7 +170,7 @@ ok "All $ACTUAL_COUNT APK file(s), including splits, are ready."
 log "Installing/updating $PACKAGE_NAME"
 
 set +e
-INSTALL_OUTPUT="$(rish -c "
+INSTALL_OUTPUT="$(remote_exec "
 set -eu
 
 INSTALL_DIR='$REMOTE_DIR'
@@ -226,7 +247,7 @@ ok "Package Manager reported a successful installation."
 # Verify that the package is present
 log "Verifying installed package"
 
-VERIFY_OUTPUT="$(rish -c "pm path '$PACKAGE_NAME'" 2>&1)" || {
+VERIFY_OUTPUT="$(remote_exec "pm path '$PACKAGE_NAME'" 2>&1)" || {
     printf '%s\n' "$VERIFY_OUTPUT" >&2
     fail "Could not verify the installed package."
 }
@@ -238,7 +259,7 @@ printf '%s\n' "$VERIFY_OUTPUT" |
 ok "Package is installed: $PACKAGE_NAME"
 
 # Installer metadata lookup is not supported by every Android pm implementation.
-INSTALLER_VERIFY="$(rish -c "pm get-installer '$PACKAGE_NAME'" 2>&1 || true)"
+INSTALLER_VERIFY="$(remote_exec "pm get-installer '$PACKAGE_NAME'" 2>&1 || true)"
 if printf '%s\n' "$INSTALLER_VERIFY" | grep -q 'Unknown command'; then
     echo "Installer metadata lookup is not supported by this device; skipping."
 else
