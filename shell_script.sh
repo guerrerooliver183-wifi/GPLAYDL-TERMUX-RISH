@@ -9,9 +9,6 @@ set -Eeuo pipefail
 export PATH="$PREFIX/bin:$PATH"
 
 readonly SHELL_SCRIPT="install-app.sh"
-readonly DEX_TARGET="$HOME/rish_shizuku.dex"
-readonly RISH_BIN="$PREFIX/bin/rish"
-readonly RISH_APPLICATION_ID="com.termux"
 
 if [ "$#" -gt 0 ]; then
     printf 'Usage: bash %s\n' "$(basename "$0")" >&2
@@ -70,53 +67,7 @@ require_command termux-setup-storage
 termux-setup-storage
 sleep 1
 
-# Rish is optional during setup. The generated installer can use ADB even
-# when Shizuku is not installed or running.
-SHIZUKU_DIR=""
-for candidate in \
-    "$HOME/storage/shared/Shizuku" \
-    "/sdcard/Shizuku" \
-    "$HOME/storage/shared/rish" \
-    "/sdcard/rish"; do
-    if [ -d "$candidate" ]; then
-        SHIZUKU_DIR="$candidate"
-        break
-    fi
-done
-
-RISH_SOURCE=""
-DEX_SOURCE=""
-if [ -n "$SHIZUKU_DIR" ]; then
-    while IFS= read -r -d '' file; do
-        [ "$(basename "$file")" = "rish" ] && RISH_SOURCE="$file"
-    done < <(find "$SHIZUKU_DIR" -type f -name rish -print0 2>/dev/null)
-    while IFS= read -r -d '' file; do
-        [ "$(basename "$file")" = "rish_shizuku.dex" ] && DEX_SOURCE="$file"
-    done < <(find "$SHIZUKU_DIR" -type f -name rish_shizuku.dex -print0 2>/dev/null)
-fi
-
-if [ -n "$RISH_SOURCE" ] && [ -n "$DEX_SOURCE" ]; then
-    log "Configuring optional Rish support"
-    mkdir -p "$PREFIX/bin"
-    cp -f -- "$DEX_SOURCE" "$DEX_TARGET" || fail "Could not copy rish_shizuku.dex."
-    chmod 400 "$DEX_TARGET" || fail "Could not set the DEX permissions."
-    cat > "$RISH_BIN" <<'RISH_WRAPPER'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-DEX="$HOME/rish_shizuku.dex"
-[ -r "$DEX" ] || { echo "$DEX was not found" >&2; exit 1; }
-export RISH_APPLICATION_ID="com.termux"
-exec /system/bin/app_process -Djava.class.path="$DEX" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "$@"
-RISH_WRAPPER
-    chmod 700 "$RISH_BIN" || fail "Could not make rish executable."
-    export RISH_APPLICATION_ID
-    hash -r 2>/dev/null || true
-    ok "Rish files configured. Start Shizuku and authorize Termux before using --shell=rish."
-else
-    printf '\n[WARNING] Shizuku Rish export files were not found. Setup will continue.\n' >&2
-    printf '          You can use --shell=adb in install-app.sh without Shizuku.\n' >&2
-    printf '          To use --shell=rish later, export rish and rish_shizuku.dex from Shizuku.\n' >&2
-fi
+# Setup does not detect or configure Shizuku. Shell selection and Rish checks remain in the generated installer.
 
 # Create phase two; it remains available for future runs as a universal installer.
 log "Creating $SHELL_SCRIPT"
