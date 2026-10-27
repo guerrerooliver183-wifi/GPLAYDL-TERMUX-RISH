@@ -1,8 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# PHASE 1: prepare Termux, install/configure gplaydl, and configure Rish.
-# At the end, create a second script to download and install
-# ANY configured package through gplaydl + Shizuku/Rish.
+# PHASE 1: prepare Termux and configure gplaydl.
+# Rish support is optional; shell selection is made when running install-app.sh.
 
 set -Eeuo pipefail
 
@@ -295,5 +294,5 @@ GENERATED_SCRIPT
 chmod 700 "$HOME/$SHELL_SCRIPT" || fail "Could not make $SHELL_SCRIPT executable."
 ok "Installation and configuration completed."
 printf '\nRun afterward and choose the shell mode for each installation:\n  bash ~/%s [--shell=adb|rish] [-s serial] <package.name>\n' "$SHELL_SCRIPT"
-printf '\nExample:\n  ~/%s --shell=adb -s 127.0.0.1:5555 com.google.android.googlequicksearchbox\n' "$SHELL_SCRIPT"
+printf '\nExamples:\n  ~/%s com.google.android.googlequicksearchbox\n  ~/%s --shell=rish com.google.android.googlequicksearchbox\n  ~/%s --shell=adb com.google.android.googlequicksearchbox\n  ~/%s --shell=adb -s 127.0.0.1:5555 com.google.android.googlequicksearchbox\n' "$SHELL_SCRIPT" "$SHELL_SCRIPT" "$SHELL_SCRIPT" "$SHELL_SCRIPT"
 printf '\nThe gplaydl configuration will be preserved. Rish is optional; ADB mode does not require Shizuku.\n'
