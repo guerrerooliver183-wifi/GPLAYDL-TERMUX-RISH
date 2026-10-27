@@ -126,7 +126,7 @@ if [ "$SHELL_MODE" = "adb" ]; then
     INSTALL_STATUS=$?
     set -e
     if [ "$INSTALL_STATUS" -eq 0 ]; then
-        SESSION_ID="$(printf '%s\\n' "$INSTALL_OUTPUT" | sed -n 's/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p')"
+        SESSION_ID="$(printf '%s\n' "$INSTALL_OUTPUT" | sed -n 's/.*\[\([0-9][0-9]*\)\].*/\1/p')"
         [ -n "$SESSION_ID" ] || fail "Could not create an Android package installation session. Output: $INSTALL_OUTPUT"
         for i in "${!TRANSFERRED_APKS[@]}"; do
             apk="${TRANSFERRED_APKS[$i]}"
@@ -137,7 +137,7 @@ if [ "$SHELL_MODE" = "adb" ]; then
             WRITE_OUTPUT="$(remote_exec "cmd package install-write -S '$SIZE' '$SESSION_ID' '$REMOTE_NAME' '$REMOTE_PATH'" 2>&1)"
             WRITE_STATUS=$?
             set -e
-            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\\n'"$WRITE_OUTPUT"
+            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\n'"$WRITE_OUTPUT"
             if [ "$WRITE_STATUS" -ne 0 ]; then
                 remote_exec "cmd package install-abandon '$SESSION_ID'" >/dev/null 2>&1 || true
                 INSTALL_STATUS=$WRITE_STATUS
@@ -149,7 +149,7 @@ if [ "$SHELL_MODE" = "adb" ]; then
             COMMIT_OUTPUT="$(remote_exec "cmd package install-commit '$SESSION_ID'" 2>&1)"
             INSTALL_STATUS=$?
             set -e
-            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\\n'"$COMMIT_OUTPUT"
+            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\n'"$COMMIT_OUTPUT"
             if [ "$INSTALL_STATUS" -ne 0 ]; then
                 remote_exec "cmd package install-abandon '$SESSION_ID'" >/dev/null 2>&1 || true
             fi
@@ -173,16 +173,16 @@ if [ "$#" -eq 0 ] || [ ! -f "$1" ]; then
 fi
 for apk do cp -f "$apk" "$INSTALL_DIR/"; done
 set -- "$INSTALL_DIR"/*.apk
-printf "Installing %s APK file(s)...\\n" "$#"
+printf "Installing %s APK file(s)...\n" "$#"
 TOTAL_SIZE=0
 for apk do
     SIZE=$(wc -c < "$apk")
     TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
 done
 SESSION_OUTPUT=$(cmd package install-create -r -i "$INSTALLER_PACKAGE" -S "$TOTAL_SIZE")
-SESSION_ID=$(printf "%s\\n" "$SESSION_OUTPUT" | sed -n "s/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p")
+SESSION_ID=$(printf "%s\n" "$SESSION_OUTPUT" | sed -n "s/.*\[\([0-9][0-9]*\)\].*/\1/p")
 [ -n "$SESSION_ID" ] || {
-    printf "%s\\n" "$SESSION_OUTPUT" >&2
+    printf "%s\n" "$SESSION_OUTPUT" >&2
     echo "Could not create an installation session." >&2
     rm -rf "$INSTALL_DIR"
     exit 1
@@ -204,7 +204,7 @@ rm -rf "$INSTALL_DIR"
     INSTALL_STATUS=$?
     set -e
 fi
-if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\\n' "$INSTALL_OUTPUT" | grep -Eq '(^|[[:space:]])Success([[:space:]]|$)'; then
+if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\n' "$INSTALL_OUTPUT" | grep -Eq '(^|[[:space:]])Success([[:space:]]|$)'; then
     fail "APK installation failed. See the installer output above."
 fi
 
