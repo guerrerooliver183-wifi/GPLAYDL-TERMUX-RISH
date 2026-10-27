@@ -39,7 +39,7 @@ while [ "$#" -gt 0 ]; do
             shift 2
             ;;
         --help|-h)
-            printf 'Usage: %s [--shell=adb|rish] [-s serial]\\n' "$(basename "$0")"
+            printf 'Usage: %s [--shell=adb|rish] [-s serial]\n' "$(basename "$0")"
             exit 0
             ;;
         *) fail "Unknown option: $1" ;;
@@ -187,11 +187,11 @@ else
             :
         else
             ADB_CHECK_STATUS=$?
-            printf '%s\\n' "$ADB_CHECK_OUTPUT" >&2
-            if printf '%s\\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
-                printf "[ERROR] Multiple ADB devices or emulators detected.\\n" >&2
-                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\\n" >&2
-                printf 'Exiting.\\n' >&2
+            printf '%s\n' "$ADB_CHECK_OUTPUT" >&2
+            if printf '%s\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
+                printf "[ERROR] Multiple ADB devices or emulators detected.\n" >&2
+                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\n" >&2
+                printf 'Exiting.\n' >&2
             fi
             fail "Could not run a command through ADB shell. Check the device connection and authorization (exit status: $ADB_CHECK_STATUS)."
         fi
@@ -200,16 +200,16 @@ else
             :
         else
             ADB_CHECK_STATUS=$?
-            printf '%s\\n' "$ADB_CHECK_OUTPUT" >&2
-            if printf '%s\\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
-                printf "[ERROR] Multiple ADB devices or emulators detected.\\n" >&2
-                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\\n" >&2
-                printf 'Exiting.\\n' >&2
+            printf '%s\n' "$ADB_CHECK_OUTPUT" >&2
+            if printf '%s\n' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then
+                printf "[ERROR] Multiple ADB devices or emulators detected.\n" >&2
+                printf "Tip: Run 'adb devices' to list devices, then rerun with '-s <serial>'.\n" >&2
+                printf 'Exiting.\n' >&2
             fi
             fail "Could not run a command through ADB shell. Check the device connection and authorization (exit status: $ADB_CHECK_STATUS)."
         fi
     fi
-    printf '%s\\n' "$ADB_CHECK_OUTPUT"
+    printf '%s\n' "$ADB_CHECK_OUTPUT"
     ok "ADB shell is working. Shizuku checks were skipped."
 fi
 
@@ -239,35 +239,35 @@ while [ "$#" -gt 0 ]; do
         --shell=adb) SHELL_MODE="adb"; ADB_SERIAL=""; shift ;;
         --shell=rish) SHELL_MODE="rish"; ADB_SERIAL=""; shift ;;
         --shell)
-            [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2; exit 1; }
+            [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")" >&2; exit 1; }
             case "$2" in
                 adb) SHELL_MODE="adb"; ADB_SERIAL="" ;;
                 rish) SHELL_MODE="rish"; ADB_SERIAL="" ;;
-                *) printf '[ERROR] Invalid shell mode: %s. Use adb or rish.\\n' "$2" >&2; exit 1 ;;
+                *) printf '[ERROR] Invalid shell mode: %s. Use adb or rish.\n' "$2" >&2; exit 1 ;;
             esac
             shift 2
             ;;
         -s)
-            [ "$#" -ge 2 ] || { printf '[ERROR] Option -s requires an ADB device serial.\\n' >&2; exit 1; }
+            [ "$#" -ge 2 ] || { printf '[ERROR] Option -s requires an ADB device serial.\n' >&2; exit 1; }
             ADB_SERIAL="$2"
             shift 2
             ;;
         --help|-h)
-            printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")"
+            printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")"
             exit 0
             ;;
-        -*) printf '[ERROR] Unknown option: %s\\n' "$1" >&2; exit 1 ;;
+        -*) printf '[ERROR] Unknown option: %s\n' "$1" >&2; exit 1 ;;
         *)
-            [ -z "$PACKAGE_NAME" ] || { printf '[ERROR] Only one package name may be provided.\\n' >&2; exit 1; }
+            [ -z "$PACKAGE_NAME" ] || { printf '[ERROR] Only one package name may be provided.\n' >&2; exit 1; }
             PACKAGE_NAME="$1"
             shift
             ;;
     esac
 done
-[ -n "$PACKAGE_NAME" ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2; exit 1; }
-[ "$SHELL_MODE" = "adb" ] || [ -z "$ADB_SERIAL" ] || { printf '[ERROR] Option -s can only be used with --shell=adb.\\n' >&2; exit 1; }
+[ -n "$PACKAGE_NAME" ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")" >&2; exit 1; }
+[ "$SHELL_MODE" = "adb" ] || [ -z "$ADB_SERIAL" ] || { printf '[ERROR] Option -s can only be used with --shell=adb.\n' >&2; exit 1; }
 if [ -n "$ADB_SERIAL" ] && [[ ! "$ADB_SERIAL" =~ ^[A-Za-z0-9._:-]+$ ]]; then
-    printf '[ERROR] Invalid ADB serial. Use the serial shown by adb devices.\\n' >&2; exit 1
+    printf '[ERROR] Invalid ADB serial. Use the serial shown by adb devices.\n' >&2; exit 1
 fi
 readonly PACKAGE_NAME SHELL_MODE ADB_SERIAL
 readonly INSTALLER_PACKAGE="com.android.vending"
@@ -301,12 +301,12 @@ remote_exec() {
     else
         if output="$(rish -c "$1" 2>&1)"; then status=0; else status=$?; fi
     fi
-    [ -z "$output" ] || printf '%s\\n' "$output"
+    [ -z "$output" ] || printf '%s\n' "$output"
     if [ "$status" -ne 0 ]; then
-        if printf '%s\\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
-            printf '\\n[ERROR] Multiple ADB devices or emulators detected.\\n' >&2
-            printf "Tip: Run 'adb devices' to list available devices, then rerun with '-s <serial>'.\\n" >&2
-            printf 'Exiting.\\n' >&2
+        if printf '%s\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
+            printf '\n[ERROR] Multiple ADB devices or emulators detected.\n' >&2
+            printf "Tip: Run 'adb devices' to list available devices, then rerun with '-s <serial>'.\n" >&2
+            printf 'Exiting.\n' >&2
         fi
         return "$status"
     fi
@@ -380,7 +380,7 @@ for apk do
 done
 
 set -- "$INSTALL_DIR"/*.apk
-printf "Installing %s APK file(s)...\\n" "$#"
+printf "Installing %s APK file(s)...\n" "$#"
 
 # Use a PackageInstaller session, the adb shell-compatible equivalent of
 # adb install-multiple on Android versions where pm install-multiple is absent.
@@ -391,9 +391,9 @@ for apk do
 done
 
 SESSION_OUTPUT=$(cmd package install-create -r -i "$INSTALLER_PACKAGE" -S "$TOTAL_SIZE")
-SESSION_ID=$(printf "%s\\n" "$SESSION_OUTPUT" | sed -n "s/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p")
+SESSION_ID=$(printf "%s\n" "$SESSION_OUTPUT" | sed -n "s/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p")
 [ -n "$SESSION_ID" ] || {
-    printf "%s\\n" "$SESSION_OUTPUT" >&2
+    printf "%s\n" "$SESSION_OUTPUT" >&2
     echo "Could not create an installation session." >&2
     rm -rf "$INSTALL_DIR"
     exit 1
