@@ -171,7 +171,11 @@ ACTUAL_COUNT="$(remote_exec "find '$REMOTE_DIR' -maxdepth 1 -type f -name '*.apk
 ok "All $ACTUAL_COUNT APK file(s), including splits, are ready."
 
 # Install through Package Manager sessions.
-log "Installing/updating $PACKAGE_NAME"
+if [ "$SHELL_MODE" = "adb" ]; then
+    log "Installing/updating $PACKAGE_NAME through ADB shell"
+else
+    log "Installing/updating $PACKAGE_NAME through Shizuku/Rish"
+fi
 
 set +e
 INSTALL_OUTPUT="$(remote_exec "
