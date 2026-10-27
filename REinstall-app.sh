@@ -27,7 +27,11 @@ remote_exec() {
         else
             if output="$(adb shell "$command" 2>&1)"; then status=0; else status=$?; fi
         fi
-        if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -Fq 'adb: more than one device/emulator'; then
+        if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -Fq 'no devices/emulators found'; then
+            printf '\n[ERROR] adb: no devices/emulators found. Connect and authorize a device, or specify -s <serial>. Exiting.\n' >&2
+            return 1
+        fi
+        if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -Fq 'more than one device/emulator'; then
             printf '\n[ERROR] Multiple ADB devices or emulators detected.\nTip: Run "adb devices" and rerun with "--shell=adb -s <serial>".\nExample: bash %s --shell=adb -s 127.0.0.1:5555 com.example.app\nExiting.\n' "$(basename "$0")" >&2
             return 1
         fi
