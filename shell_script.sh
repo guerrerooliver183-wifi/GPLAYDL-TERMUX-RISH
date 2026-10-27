@@ -236,12 +236,12 @@ PACKAGE_NAME=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --shell=adb) SHELL_MODE="adb"; ADB_SERIAL=""; shift ;;
+        --shell=adb) SHELL_MODE="adb"; shift ;;
         --shell=rish) SHELL_MODE="rish"; ADB_SERIAL=""; shift ;;
         --shell)
             [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")" >&2; exit 1; }
             case "$2" in
-                adb) SHELL_MODE="adb"; ADB_SERIAL="" ;;
+                adb) SHELL_MODE="adb" ;;
                 rish) SHELL_MODE="rish"; ADB_SERIAL="" ;;
                 *) printf '[ERROR] Invalid shell mode: %s. Use adb or rish.\n' "$2" >&2; exit 1 ;;
             esac
