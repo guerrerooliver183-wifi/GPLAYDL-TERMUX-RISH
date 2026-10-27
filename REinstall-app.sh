@@ -29,7 +29,7 @@ while [ "$#" -gt 0 ]; do
         --shell=adb) SHELL_MODE="adb"; shift ;;
         --shell=rish) SHELL_MODE="rish"; shift ;;
         --shell)
-            [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2; exit 1; }
+            [ "$#" -ge 2 ] || { printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")" >&2; exit 1; }
             case "$2" in
                 adb|rish) SHELL_MODE="$2" ;;
                 *) fail "Invalid shell mode: $2. Use adb or rish." ;;
@@ -42,8 +42,8 @@ while [ "$#" -gt 0 ]; do
             shift 2
             ;;
         --help|-h)
-            printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")"
-            printf 'Examples:\\n  %s --shell=rish com.example.app\\n  %s --shell=adb com.example.app\\n  %s --shell=adb -s 127.0.0.1:5555 com.example.app\\n' "$(basename "$0")" "$(basename "$0")" "$(basename "$0")"
+            printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")"
+            printf 'Examples:\n  %s --shell=rish com.example.app\n  %s --shell=adb com.example.app\n  %s --shell=adb -s 127.0.0.1:5555 com.example.app\n' "$(basename "$0")" "$(basename "$0")" "$(basename "$0")"
             exit 0
             ;;
         -*) fail "Unknown option: $1" ;;
@@ -56,7 +56,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$PACKAGE_NAME" ] || {
-    printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\\n' "$(basename "$0")" >&2
+    printf 'Usage: %s [--shell=adb|rish] [-s serial] <package.name>\n' "$(basename "$0")" >&2
     exit 1
 }
 [ "$SHELL_MODE" = "adb" ] || [ -z "$ADB_SERIAL" ] || fail "Option -s can only be used with --shell=adb."
@@ -86,13 +86,13 @@ remote_exec() {
     else
         if output="$(rish -c "$1" 2>&1)"; then status=0; else status=$?; fi
     fi
-    [ -z "$output" ] || printf '%s\\n' "$output"
+    [ -z "$output" ] || printf '%s\n' "$output"
     if [ "$status" -ne 0 ]; then
-        if printf '%s\\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
-            printf '\\n[ERROR] Multiple ADB devices or emulators detected.\\n' >&2
-            printf "Tip: Run 'adb devices' to list available devices, then rerun with '-s <serial>'.\\n" >&2
-            printf 'Example: bash %s --shell=adb -s 127.0.0.1:5555 %s\\n' "$(basename "$0")" "$PACKAGE_NAME" >&2
-            printf 'Exiting.\\n' >&2
+        if printf '%s\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
+            printf '\n[ERROR] Multiple ADB devices or emulators detected.\n' >&2
+            printf "Tip: Run 'adb devices' to list available devices, then rerun with '-s <serial>'.\n" >&2
+            printf 'Example: bash %s --shell=adb -s 127.0.0.1:5555 %s\n' "$(basename "$0")" "$PACKAGE_NAME" >&2
+            printf 'Exiting.\n' >&2
         fi
         return "$status"
     fi
@@ -248,16 +248,16 @@ for apk do
     TOTAL_SIZE=\$((TOTAL_SIZE + SIZE))
 done
 
-printf 'Preparing %s APK file(s)...\\n' \"\$#\"
+printf 'Preparing %s APK file(s)...\n' \"\$#\"
 
 SESSION_OUTPUT=\$(cmd package install-create -r -i \"\$INSTALLER_PACKAGE\" -S \"\$TOTAL_SIZE\") || {
-    printf '%s\\n' \"\$SESSION_OUTPUT\" >&2
+    printf '%s\n' \"\$SESSION_OUTPUT\" >&2
     exit 1
 }
 
-printf '%s\\n' \"\$SESSION_OUTPUT\"
+printf '%s\n' \"\$SESSION_OUTPUT\"
 
-SESSION_ID=\$(printf '%s\\n' \"\$SESSION_OUTPUT\" |
+SESSION_ID=\$(printf '%s\n' \"\$SESSION_OUTPUT\" |
     sed -n 's/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p' |
     head -n 1)
 
@@ -270,7 +270,7 @@ for apk do
     NAME=\$(basename \"\$apk\")
     SIZE=\$(wc -c < \"\$apk\")
 
-    printf 'Writing %s...\\n' \"\$NAME\"
+    printf 'Writing %s...\n' \"\$NAME\"
 
     cmd package install-write -S \"\$SIZE\" \"\$SESSION_ID\" \"\$NAME\" \"\$apk\"
 done
