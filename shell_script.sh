@@ -171,39 +171,39 @@ mapfile -d '' TRANSFERRED_APKS < <(find "$APK_TRANSFER_DIR" -maxdepth 1 -type f 
 [ "${#TRANSFERRED_APKS[@]}" -gt 0 ] || fail "Could not copy the APK files."
 ok "Prepared ${#TRANSFERRED_APKS[@]} APK file(s) for installation."
 
-log "Installing APK splits through Shizuku"
-set +e
-INSTALL_OUTPUT="$(remote_exec '
+if [ "$SHELL_MODE" = "adb" ]; then
+    log "Installing APK splits through ADB"
+    set +e
+    if [ -n "$ADB_SERIAL" ]; then
+        INSTALL_OUTPUT="$(adb -s "$ADB_SERIAL" install-multiple -r -i "$INSTALLER_PACKAGE" "${TRANSFERRED_APKS[@]}" 2>&1)"
+    else
+        INSTALL_OUTPUT="$(adb install-multiple -r -i "$INSTALLER_PACKAGE" "${TRANSFERRED_APKS[@]}" 2>&1)"
+    fi
+    INSTALL_STATUS=$?
+    set -e
+else
+    log "Installing APK splits through Shizuku/Rish"
+    set +e
+    INSTALL_OUTPUT="$(remote_exec '
 set -eu
 SOURCE_DIR="/sdcard/TEMP_GPLAYDL"
 INSTALL_DIR="/data/local/tmp/TEMP_GPLAYDL"
 INSTALLER_PACKAGE="com.android.vending"
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
-
 set -- "$SOURCE_DIR"/*.apk
 if [ "$#" -eq 0 ] || [ ! -f "$1" ]; then
     echo "No APK files were found in $SOURCE_DIR" >&2
     exit 1
 fi
-
-# system_server cannot read APKs directly from shared storage on some Android
-# versions, so copy them to the shell-readable temporary directory first.
-for apk do
-    cp -f "$apk" "$INSTALL_DIR/"
-done
-
+for apk do cp -f "$apk" "$INSTALL_DIR/"; done
 set -- "$INSTALL_DIR"/*.apk
 printf "Installing %s APK file(s)...\\n" "$#"
-
-# Use a PackageInstaller session, the adb shell-compatible equivalent of
-# adb install-multiple on Android versions where pm install-multiple is absent.
 TOTAL_SIZE=0
 for apk do
     SIZE=$(wc -c < "$apk")
     TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
 done
-
 SESSION_OUTPUT=$(cmd package install-create -r -i "$INSTALLER_PACKAGE" -S "$TOTAL_SIZE")
 SESSION_ID=$(printf "%s\\n" "$SESSION_OUTPUT" | sed -n "s/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p")
 [ -n "$SESSION_ID" ] || {
@@ -212,29 +212,26 @@ SESSION_ID=$(printf "%s\\n" "$SESSION_OUTPUT" | sed -n "s/.*\\[\\([0-9][0-9]*\\)
     rm -rf "$INSTALL_DIR"
     exit 1
 }
-
 abandon_session() {
     cmd package install-abandon "$SESSION_ID" >/dev/null 2>&1 || true
     rm -rf "$INSTALL_DIR"
 }
 trap abandon_session EXIT
-
 for apk do
     NAME=$(basename "$apk")
     SIZE=$(wc -c < "$apk")
     cmd package install-write -S "$SIZE" "$SESSION_ID" "$NAME" "$apk"
 done
-
 cmd package install-commit "$SESSION_ID"
 trap - EXIT
 rm -rf "$INSTALL_DIR"
 ' 2>&1)"
-INSTALL_STATUS=$?
-set -e
-printf '%s\n' "$INSTALL_OUTPUT"
-
-if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\n' "$INSTALL_OUTPUT" | grep -q 'Success'; then
-    fail "The APK installation did not report Success."
+    INSTALL_STATUS=$?
+    set -e
+fi
+printf '%s\\n' "$INSTALL_OUTPUT"
+if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\\n' "$INSTALL_OUTPUT" | grep -Eq '(^|[[:space:]])Success([[:space:]]|$)'; then
+    fail "APK installation failed. See the installer output above."
 fi
 
 log "Verifying the installation"
