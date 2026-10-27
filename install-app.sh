@@ -98,15 +98,64 @@ mapfile -d '' TRANSFERRED_APKS < <(find "$APK_TRANSFER_DIR" -maxdepth 1 -type f 
 ok "Prepared ${#TRANSFERRED_APKS[@]} APK file(s) for installation."
 
 if [ "$SHELL_MODE" = "adb" ]; then
-    log "Installing APK splits through ADB"
+    log "Installing APK splits through ADB shell"
+    REMOTE_INSTALL_DIR="/data/local/tmp/TEMP_GPLAYDL"
     set +e
-    if [ -n "$ADB_SERIAL" ]; then
-        INSTALL_OUTPUT="$(adb -s "$ADB_SERIAL" install-multiple -r -i "$INSTALLER_PACKAGE" "${TRANSFERRED_APKS[@]}" 2>&1)"
-    else
-        INSTALL_OUTPUT="$(adb install-multiple -r -i "$INSTALLER_PACKAGE" "${TRANSFERRED_APKS[@]}" 2>&1)"
-    fi
+    remote_exec "mkdir -p '$REMOTE_INSTALL_DIR' && rm -f '$REMOTE_INSTALL_DIR'/*.apk" >/dev/null
     INSTALL_STATUS=$?
     set -e
+    [ "$INSTALL_STATUS" -eq 0 ] || fail "Could not prepare the remote APK directory through ADB shell."
+
+    TOTAL_SIZE=0
+    APK_INDEX=0
+    REMOTE_APK_NAMES=()
+    for apk in "${TRANSFERRED_APKS[@]}"; do
+        APK_INDEX=$((APK_INDEX + 1))
+        REMOTE_NAME="split_${APK_INDEX}.apk"
+        REMOTE_PATH="$REMOTE_INSTALL_DIR/$REMOTE_NAME"
+        SIZE=$(wc -c < "$apk")
+        TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+        if ! remote_exec "cat > '$REMOTE_PATH'" < "$apk"; then
+            fail "Could not transfer an APK through ADB shell."
+        fi
+        REMOTE_APK_NAMES+=("$REMOTE_NAME")
+    done
+
+    set +e
+    INSTALL_OUTPUT="$(remote_exec "cmd package install-create -r -i '$INSTALLER_PACKAGE' -S '$TOTAL_SIZE'" 2>&1)"
+    INSTALL_STATUS=$?
+    set -e
+    if [ "$INSTALL_STATUS" -eq 0 ]; then
+        SESSION_ID="$(printf '%s\\n' "$INSTALL_OUTPUT" | sed -n 's/.*\\[\\([0-9][0-9]*\\)\\].*/\\1/p')"
+        [ -n "$SESSION_ID" ] || fail "Could not create an Android package installation session. Output: $INSTALL_OUTPUT"
+        for i in "${!TRANSFERRED_APKS[@]}"; do
+            apk="${TRANSFERRED_APKS[$i]}"
+            REMOTE_NAME="${REMOTE_APK_NAMES[$i]}"
+            REMOTE_PATH="$REMOTE_INSTALL_DIR/$REMOTE_NAME"
+            SIZE=$(wc -c < "$apk")
+            set +e
+            WRITE_OUTPUT="$(remote_exec "cmd package install-write -S '$SIZE' '$SESSION_ID' '$REMOTE_NAME' '$REMOTE_PATH'" 2>&1)"
+            WRITE_STATUS=$?
+            set -e
+            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\\n'"$WRITE_OUTPUT"
+            if [ "$WRITE_STATUS" -ne 0 ]; then
+                remote_exec "cmd package install-abandon '$SESSION_ID'" >/dev/null 2>&1 || true
+                INSTALL_STATUS=$WRITE_STATUS
+                break
+            fi
+        done
+        if [ "$INSTALL_STATUS" -eq 0 ]; then
+            set +e
+            COMMIT_OUTPUT="$(remote_exec "cmd package install-commit '$SESSION_ID'" 2>&1)"
+            INSTALL_STATUS=$?
+            set -e
+            INSTALL_OUTPUT="$INSTALL_OUTPUT"$'\\n'"$COMMIT_OUTPUT"
+            if [ "$INSTALL_STATUS" -ne 0 ]; then
+                remote_exec "cmd package install-abandon '$SESSION_ID'" >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+    remote_exec "rm -rf '$REMOTE_INSTALL_DIR'" >/dev/null 2>&1 || true
 else
     log "Installing APK splits through Shizuku/Rish"
     set +e
@@ -155,7 +204,6 @@ rm -rf "$INSTALL_DIR"
     INSTALL_STATUS=$?
     set -e
 fi
-printf '%s\\n' "$INSTALL_OUTPUT"
 if [ "$INSTALL_STATUS" -ne 0 ] || ! printf '%s\\n' "$INSTALL_OUTPUT" | grep -Eq '(^|[[:space:]])Success([[:space:]]|$)'; then
     fail "APK installation failed. See the installer output above."
 fi
