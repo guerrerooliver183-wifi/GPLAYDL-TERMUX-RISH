@@ -1,8 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# PHASE 1: prepare Termux, install/configure gplaydl, and configure Rish.
-# At the end, create a second script to download and install
-# ANY configured package through gplaydl + Shizuku/Rish.
+# PHASE 1: prepare Termux and configure gplaydl.
+# Rish support is optional; shell selection is made when running install-app.sh.
 
 set -Eeuo pipefail
 
@@ -10,25 +9,12 @@ set -Eeuo pipefail
 export PATH="$PREFIX/bin:$PATH"
 
 readonly SHELL_SCRIPT="install-app.sh"
-readonly DEX_TARGET="$HOME/rish_shizuku.dex"
-readonly RISH_BIN="$PREFIX/bin/rish"
-readonly RISH_APPLICATION_ID="com.termux"
 
-SETUP_SHELL_MODE="rish"
-SETUP_ADB_SERIAL=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --shell=adb) SETUP_SHELL_MODE="adb" ;;
-        --shell=rish) SETUP_SHELL_MODE="rish" ;;
-        --shell) [ "$#" -ge 2 ] || { printf '[ERROR] Missing value for --shell.\n' >&2; exit 1; }; case "$2" in adb|rish) SETUP_SHELL_MODE="$2" ;; *) printf '[ERROR] Invalid shell mode: %s\n' "$2" >&2; exit 1 ;; esac; shift ;;
-        -s) [ "$#" -ge 2 ] && [ -n "$2" ] || { printf '[ERROR] Option -s requires an ADB device serial.\n' >&2; exit 1; }; SETUP_ADB_SERIAL="$2"; shift ;;
-        --help|-h) printf 'Usage: %s [--shell=adb|rish] [-s serial]\n' "$(basename "$0")"; exit 0 ;;
-        *) printf '[ERROR] Unknown option: %s\n' "$1" >&2; exit 1 ;;
-    esac
-    shift
-done
-if [ -n "$SETUP_ADB_SERIAL" ] && [ "$SETUP_SHELL_MODE" != "adb" ]; then printf '[ERROR] Option -s can only be used with --shell=adb.\n' >&2; exit 1; fi
-if [ -n "$SETUP_ADB_SERIAL" ] && [[ ! "$SETUP_ADB_SERIAL" =~ ^[A-Za-z0-9._:-]+$ ]]; then printf '[ERROR] Invalid ADB serial.\n' >&2; exit 1; fi
+if [ "$#" -gt 0 ]; then
+    printf 'Usage: bash %s\n' "$(basename "$0")" >&2
+    printf 'Shell mode options belong to the generated install-app.sh script.\n' >&2
+    exit 1
+fi
 
 fail() { printf '\n[ERROR] %s\n' "$*" >&2; exit 1; }
 log()  { printf '\n[*] %s\n' "$*"; }
@@ -81,103 +67,7 @@ require_command termux-setup-storage
 termux-setup-storage
 sleep 1
 
-if [ "$SETUP_SHELL_MODE" = "rish" ]; then
-# Accept the usual Shizuku export paths.
-SHIZUKU_DIR=""
-for candidate in \
-    "$HOME/storage/shared/Shizuku" \
-    "/sdcard/Shizuku" \
-    "$HOME/storage/shared/rish" \
-    "/sdcard/rish"; do
-    if [ -d "$candidate" ]; then
-        SHIZUKU_DIR="$candidate"
-        break
-    fi
-done
-
-[ -n "$SHIZUKU_DIR" ] || fail "The Shizuku export directory was not found. Export rish and rish_shizuku.dex from 'Shizuku > Use Shizuku in terminal apps > Export files' to a folder named Shizuku or rish."
-
-RISH_SOURCE=""
-DEX_SOURCE=""
-while IFS= read -r -d '' file; do
-    [ "$(basename "$file")" = "rish" ] && RISH_SOURCE="$file"
-done < <(find "$SHIZUKU_DIR" -type f -name rish -print0 2>/dev/null)
-while IFS= read -r -d '' file; do
-    [ "$(basename "$file")" = "rish_shizuku.dex" ] && DEX_SOURCE="$file"
-done < <(find "$SHIZUKU_DIR" -type f -name rish_shizuku.dex -print0 2>/dev/null)
-
-[ -n "$RISH_SOURCE" ] || fail "The Rish file exported by Shizuku was not found."
-[ -n "$DEX_SOURCE" ] || fail "The exported rish_shizuku.dex was not found."
-ok "Shizuku files found in $SHIZUKU_DIR"
-
-log "Installing Rish"
-mkdir -p "$PREFIX/bin"
-
-# Store the DEX in Termux's private directory and make it non-writable.
-cp -f -- "$DEX_SOURCE" "$DEX_TARGET" || fail "Could not copy rish_shizuku.dex."
-chmod 400 "$DEX_TARGET" || fail "Could not set the DEX permissions."
-
-# Explicit wrapper: Rish always uses the correct private DEX even if the
-# exported rish file looks for the DEX next to the executable.
-cat > "$RISH_BIN" <<'RISH_WRAPPER'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-DEX="$HOME/rish_shizuku.dex"
-[ -r "$DEX" ] || { echo "$DEX was not found" >&2; exit 1; }
-export RISH_APPLICATION_ID="com.termux"
-exec /system/bin/app_process -Djava.class.path="$DEX" /system/bin --nice-name=rish rikka.shizuku.shell.ShizukuShellLoader "$@"
-RISH_WRAPPER
-chmod 700 "$RISH_BIN" || fail "Could not make rish executable."
-export RISH_APPLICATION_ID
-hash -r 2>/dev/null || true
-require_command rish
-
-cat <<'EOF'
-
-================================================================
- SHIZUKU CHECK
-================================================================
-
-Make sure Shizuku is running and Termux has been authorized.
-EOF
-
-WHOAMI_OUTPUT="$(rish -c 'whoami' 2>&1)" || {
-    printf '%s\n' "$WHOAMI_OUTPUT"
-    fail "Rish could not execute commands. Make sure Shizuku is running and Termux is authorized."
-}
-printf '%s\n' "$WHOAMI_OUTPUT"
-# Rish may print an authorization notice before the actual identity.
-# Accept only a complete line that is exactly "shell" or "root", ignoring
-# surrounding whitespace; do not match those words inside unrelated messages.
-RISH_IDENTITY="$(printf '%s\n' "$WHOAMI_OUTPUT" | awk '
-    /^[[:space:]]*(shell|root)[[:space:]]*$/ {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-        print
-        exit
-    }
-')"
-if [ "$RISH_IDENTITY" != "shell" ] && [ "$RISH_IDENTITY" != "root" ]; then
-    fail "Rish output did not contain a standalone 'shell' or 'root' line. Output was: $WHOAMI_OUTPUT"
-fi
-ok "Shizuku/Rish is working correctly (identity: $RISH_IDENTITY)."
-ok "Shizuku/Rish is working correctly."
-
-else
-    log "Checking ADB connection"
-    require_command adb
-    if [ -n "$SETUP_ADB_SERIAL" ]; then
-        if ADB_CHECK_OUTPUT="$(adb -s "$SETUP_ADB_SERIAL" shell whoami 2>&1)"; then printf '%s\n' "$ADB_CHECK_OUTPUT"; else
-            if printf '%s' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then printf '\n[ERROR] Multiple ADB devices or emulators detected.\nTip: Run "adb devices" and rerun with "-s <serial>".\n' >&2; else printf '%s\n' "$ADB_CHECK_OUTPUT" >&2; fi
-            fail "ADB connection check failed."
-        fi
-    else
-        if ADB_CHECK_OUTPUT="$(adb shell whoami 2>&1)"; then printf '%s\n' "$ADB_CHECK_OUTPUT"; else
-            if printf '%s' "$ADB_CHECK_OUTPUT" | grep -Fq 'adb: more than one device/emulator'; then printf '\n[ERROR] Multiple ADB devices or emulators detected.\nTip: Run "adb devices" and rerun with "-s <serial>".\n' >&2; else printf '%s\n' "$ADB_CHECK_OUTPUT" >&2; fi
-            fail "ADB connection check failed."
-        fi
-    fi
-    ok "ADB shell is working correctly."
-fi
+# Setup does not detect or configure Shizuku. Shell selection and Rish checks remain in the generated installer.
 
 # Create phase two; it remains available for future runs as a universal installer.
 log "Creating $SHELL_SCRIPT"
@@ -185,7 +75,7 @@ cat > "$HOME/$SHELL_SCRIPT" <<'GENERATED_SCRIPT'
 #!/data/data/com.termux/files/usr/bin/bash
 
 # PHASE 2: download and install any configured package.
-# Requires phase one to have configured gplaydl and Rish first.
+# Requires phase one to have configured gplaydl. Rish is optional when using ADB mode.
 # Usage: ./gplay-installer.sh <PACKAGE_NAME>
 
 set -Eeuo pipefail
@@ -193,8 +83,8 @@ set -Eeuo pipefail
 # Temporary PATH: does not modify ~/.bashrc or permanent configuration.
 export PATH="$PREFIX/bin:$PATH"
 
-DEFAULT_SHELL_MODE="__DEFAULT_SHELL_MODE__"
-DEFAULT_ADB_SERIAL="__DEFAULT_ADB_SERIAL__"
+DEFAULT_SHELL_MODE="rish"
+DEFAULT_ADB_SERIAL=""
 SHELL_MODE="$DEFAULT_SHELL_MODE"
 ADB_SERIAL="$DEFAULT_ADB_SERIAL"
 PACKAGE_NAME=""
@@ -352,9 +242,8 @@ ok "Package installed successfully."
 echo '[✓] Temporary files will be removed automatically.'
 GENERATED_SCRIPT
 
-sed -i "s/__DEFAULT_SHELL_MODE__/$SETUP_SHELL_MODE/; s/__DEFAULT_ADB_SERIAL__/$SETUP_ADB_SERIAL/" "$HOME/$SHELL_SCRIPT" || fail "Could not configure the generated installer."
 chmod 700 "$HOME/$SHELL_SCRIPT" || fail "Could not make $SHELL_SCRIPT executable."
 ok "Installation and configuration completed."
-printf '\nRun afterward passing any package name:\n  bash ~/%s [--shell=adb|rish] [-s serial] <package.name>\n' "$SHELL_SCRIPT"
-printf '\nExample:\n  ~/%s --shell=adb -s 127.0.0.1:5555 com.google.android.googlequicksearchbox\n' "$SHELL_SCRIPT"
-printf '\nThe gplaydl configuration and Shizuku DEX will be preserved.\n'
+printf '\nRun afterward and choose the shell mode for each installation:\n  bash ~/%s [--shell=adb|rish] [-s serial] <package.name>\n' "$SHELL_SCRIPT"
+printf '\nExamples:\n  ~/%s com.google.android.googlequicksearchbox\n  ~/%s --shell=rish com.google.android.googlequicksearchbox\n  ~/%s --shell=adb com.google.android.googlequicksearchbox\n  ~/%s --shell=adb -s 127.0.0.1:5555 com.google.android.googlequicksearchbox\n' "$SHELL_SCRIPT" "$SHELL_SCRIPT" "$SHELL_SCRIPT" "$SHELL_SCRIPT"
+printf '\nThe gplaydl configuration will be preserved. Rish is optional; ADB mode does not require Shizuku.\n'
