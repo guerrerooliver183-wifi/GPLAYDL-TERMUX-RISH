@@ -54,7 +54,12 @@ remote_exec() {
         [ -z "$output" ] || printf '%s\n' "$output"
         return "$status"
     fi
-    rish -c "$command"
+    if output="$(rish -c "$command" 2>&1)"; then status=0; else status=$?; fi
+    # Filter only Rish's informational Shizuku authorization notice.
+    output="$(printf '%s\n' "$output" |
+        sed '/^[[:space:]]*Waiting for Shizuku authorization\.\.\. check your notifications\.[[:space:]]*$/d')"
+    [ -z "$output" ] || printf '%s\n' "$output"
+    return "$status"
 }
 
 cleanup() {
