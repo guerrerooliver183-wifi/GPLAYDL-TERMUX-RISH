@@ -86,6 +86,11 @@ remote_exec() {
     else
         if output="$(rish -c "$1" 2>&1)"; then status=0; else status=$?; fi
     fi
+    # Remove only Rish's informational authorization line; preserve command output and errors.
+    if [ "$SHELL_MODE" = "rish" ]; then
+        output="$(printf '%s\n' "$output" |
+            sed '/^[[:space:]]*Waiting for Shizuku authorization\.\.\. check your notifications\.[[:space:]]*$/d')"
+    fi
     [ -z "$output" ] || printf '%s\n' "$output"
     if [ "$status" -ne 0 ]; then
         if printf '%s\n' "$output" | grep -Fq 'adb: more than one device/emulator'; then
